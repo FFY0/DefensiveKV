@@ -11,9 +11,16 @@ We address the fragility of existing cache-eviction methods by introducing defen
 - **DefensiveKV**: Introduces **defensive aggregation** on top of the current state-of-the-art method, (Ada-)CriticalKV.  
 - **Layer-DefensiveKV**: Extends DefensiveKV by adopting AdaKV-style allocation, further enabling **layer-wise budget allocation**.
 
+The core innovation of Defensive Aggregation is implemented in only two lines, yet it yields substantial performance
+
+```python
+## Mechanism of Defensive Aggregation 
+max_scores = scores.max(dim=2).values.max(dim=-2).values
+scores = max_scores.clamp(min=max_scores.mean(dim=-1, keepdim=True))
+```
+
 ![Performance Overview](./Task_Performance.png)
 ![LongBench  Overview](./Longbench_Performance.png)
-
 
 ## Installation
 
@@ -33,7 +40,7 @@ make
 pip install flash-attn --no-build-isolation
 ```
 
-### Preparing Models and Datasets & set Environment Variables
+### Preparing Models and Datasets & Setting Environment Variables
 
 Set the following environment variables before running evaluations:
 
@@ -97,19 +104,6 @@ cd evaluation/results
 # Generate statistics from JSON result files
 python statistic.py
 
-```
-
-## Method Details
-
-### Defensive Mechanism
-
-The core innovation of DefensiveKV is the defensive score adjustment:
-
-```python
-## Mechanism of Defensive Aggregation 
-
-max_scores = scores.max(dim=2).values.max(dim=-2).values
-scores = max_scores.clamp(min=max_scores.mean(dim=-1, keepdim=True))
 ```
 
 ## TODO
