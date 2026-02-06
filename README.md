@@ -64,7 +64,7 @@ cd evaluation
 bash quick_evaluate.sh
 ```
 
-| File Name | cwe | fwe | niah_MK_1 | niah_MK_2 | niah_MK_3 | niah_MQ | niah_MV | niah_S1 | niah_S2 | niah_S3 | qa_1 | qa_2 | vt | Ave. |
+| Method | cwe | fwe | niah_MK_1 | niah_MK_2 | niah_MK_3 | niah_MQ | niah_MV | niah_S1 | niah_S2 | niah_S3 | qa_1 | qa_2 | vt | Ave. |
 | :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- |
 | SnapKV | 72.6 | 74 | 26 | 8 | 2 | 36.5 | 34 | 74 | 52 | 4 | 44 | 42 | 38 | 39.01 |
 | AdaKV | 92.4 | 87.33 | 24 | 20 | 16 | 29.5 | 26.5 | 88 | 56 | 4 | 46 | 42 | 65.6 | 45.95 |
