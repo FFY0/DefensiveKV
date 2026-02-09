@@ -6,12 +6,12 @@ This repository contains the official implementation of **DefensiveKV** and **La
 
 ## Overview
 
-We address the fragility of existing cache-eviction methods by introducing defensive aggregation. To demonstrate its effectiveness, we instantiate two cache-eviction methods:
+We tackle the fragility of existing cache eviction via **defensive aggregation**, implementing two variants:
 
-- **DefensiveKV**: Introduces **defensive aggregation** on top of the current state-of-the-art method, (Ada-)CriticalKV.  
-- **Layer-DefensiveKV**: Extends DefensiveKV by adopting AdaKV-style allocation, further enabling **layer-wise budget allocation**.
+- **DefensiveKV**: Introduces **defensive aggregation** on top of the current SOTA method, (Ada-)CriticalKV.  
+- **Layer-DefensiveKV**: Extends DefensiveKV by adopting AdaKV-style **layer-wise budget allocation**.
 
-The core innovation of Defensive Aggregation is implemented in only two lines, yet it yields substantial performance
+**Defensive aggregation** is implemented in just **two lines of code**, yet yields substantial improvements.
 
 ```python
 ## Mechanism of Defensive Aggregation 
