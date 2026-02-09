@@ -73,7 +73,7 @@ cd evaluation
 bash quick_evaluate.sh
 ```
 
-| Ruler Tasks | cwe | fwe | MK_1 | MK_2 | MK_3 | MQ | MV | S1 | S2 | S3 | qa_1 | qa_2 | vt | Ave. |
+| Ruler Tasks | cwe | fwe | MK1 | MK2 | MK3 | MQ | MV | S1 | S2 | S3 | qa1 | qa2 | vt | Ave. |
 | :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- |
 | SnapKV | 72.6 | 74 | 26 | 8 | 2 | 36.5 | 34 | 74 | 52 | 4 | 44 | 42 | 38 | 39.0 |
 | AdaKV | 92.4 | 87.3 | 24 | 20 | 16 | 29.5 | 26.5 | 88 | 56 | 4 | 46 | 42 | 65.6 | 46.0 |
