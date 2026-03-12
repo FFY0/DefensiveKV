@@ -95,6 +95,16 @@ This script will:
 2. Run the same methods on RULER (4096 context length) with compression ratio 0.8 (20% Cache Size)
 3. Save logs to `evaluation/logs/` directory
 
+## Efficiency Evaluation
+
+Run the following script to evaluate efficiency:
+
+```bash
+cd evaluation
+bash efficiency_evaluate.sh
+```
+
+
 ###  Press Names in Evaluation
 
 - `efficient_defensivekv` - DefensiveKV (per-head)
