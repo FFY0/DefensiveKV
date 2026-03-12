@@ -6,12 +6,12 @@ This repository contains the official implementation of **DefensiveKV** and **La
 
 ## Overview
 
-We address the fragility of existing cache-eviction methods by introducing defensive aggregation. To demonstrate its effectiveness, we instantiate two cache-eviction methods:
+We tackle the fragility of existing cache eviction via **defensive aggregation**, implementing two variants:
 
-- **DefensiveKV**: Introduces **defensive aggregation** on top of the current state-of-the-art method, (Ada-)CriticalKV.  
-- **Layer-DefensiveKV**: Extends DefensiveKV by adopting AdaKV-style allocation, further enabling **layer-wise budget allocation**.
+- **DefensiveKV**: Introduces **defensive aggregation** on top of the current SOTA method, (Ada-)CriticalKV.  
+- **Layer-DefensiveKV**: Extends DefensiveKV by adopting AdaKV-style **layer-wise budget allocation**.
 
-The core innovation of Defensive Aggregation is implemented in only two lines, yet it yields substantial performance
+**Defensive aggregation** is implemented in just **two lines of code**, yet yields substantial improvements.
 
 ```python
 ## Mechanism of Defensive Aggregation 
@@ -55,22 +55,31 @@ export KVPRESS_DATASETS=/path/to/datasets  # Directory containing evaluation dat
 export MODELS_DIR=/path/to/your/models  # Directory containing HuggingFace models
 ```
 
-## A Real Quick Evaluation (≤ 1 hour)
+## Strong Recommendation: A Real Quick Evaluation (≤ 1 hour)
 
-We provide a quick evaluation on **10% of the RULER benchmark** to demonstrate the performance of **DefensiveKV** and **Layer-DefensiveKV** under 20\% cache size. The evaluation requires less than one hour on a single RTX 4090 and reproduces the results below.
+We provide a quick evaluation on **10% of the RULER benchmark** to demonstrate the performance of **DefensiveKV** and **Layer-DefensiveKV** under 20\% cache size. 
+
+💡 **Rapid Verification:** Validate with several popular methods in just 1 hour on a single RTX 4090.
+
+📉 **The Truth:** Correcting previous benchmark flaws reveals SnapKV scores drop to **39.0** at 20% compression, shattering previous "lossless" illusions.
+
+🚀 **Our Progress:**  We advanced from AdaKV to CriticalKV then DefensiveKV, boosting performance from **39.0** to **91.4**.
+
+🧩 **Stackable Gains:** Our orthogonal approaches integrate seamlessly with existing methods for additive improvements. Explore with us!
+
 
 ```bash
 cd evaluation
 bash quick_evaluate.sh
 ```
 
-| File Name | cwe | fwe | niah_MK_1 | niah_MK_2 | niah_MK_3 | niah_MQ | niah_MV | niah_S1 | niah_S2 | niah_S3 | qa_1 | qa_2 | vt | Ave. |
+| Ruler Tasks | cwe | fwe | MK1 | MK2 | MK3 | MQ | MV | S1 | S2 | S3 | qa1 | qa2 | vt | Ave. |
 | :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- |
-| SnapKV | 72.6 | 74 | 26 | 8 | 2 | 36.5 | 34 | 74 | 52 | 4 | 44 | 42 | 38 | 39.01 |
-| AdaKV | 92.4 | 87.33 | 24 | 20 | 16 | 29.5 | 26.5 | 88 | 56 | 4 | 46 | 42 | 65.6 | 45.95 |
-| AdaCriticalKV | 93.8 | 93.33 | 60 | 30 | 26 | 71 | 72 | 88 | 92 | 4 | 56 | 52 | 79.2 | 62.87 |
-| DefensiveKV | **95.2** | 92 | 98 | 86 | 72 | 95.5 | 90 | **100** | **100** | 62 | **78** | 46 | 94.4 | 85.32 |
-| LayerDefensiveKV | 93.6 | **94** | **100** | **98** | **92** | **100** | **94.5** | 98 | 96 | **92** | **78** | **56** | **96.4** | **91.42** |
+| SnapKV | 72.6 | 74 | 26 | 8 | 2 | 36.5 | 34 | 74 | 52 | 4 | 44 | 42 | 38 | 39.0 |
+| AdaKV | 92.4 | 87.3 | 24 | 20 | 16 | 29.5 | 26.5 | 88 | 56 | 4 | 46 | 42 | 65.6 | 46.0 |
+| AdaCriticalKV | 93.8 | 93.3 | 60 | 30 | 26 | 71 | 72 | 88 | 92 | 4 | 56 | 52 | 79.2 | 62.9 |
+| DefensiveKV | **95.2** | 92 | 98 | 86 | 72 | 95.5 | 90 | **100** | **100** | 62 | **78** | 46 | 94.4 | 85.3 |
+| LayerDefensiveKV | 93.6 | **94** | **100** | **98** | **92** | **100** | **94.5** | 98 | 96 | **92** | **78** | **56** | **96.4** | **91.4** |
 
 ## Comprehensive Evaluation (LongBench + RULER)
 
