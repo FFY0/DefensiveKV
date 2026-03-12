@@ -1,6 +1,8 @@
 # DefensiveKV: Taming the Fragility of KV Cache Eviction in LLM Inference (ICLR 2026)
 
 [![Paper](https://img.shields.io/badge/arXiv-2510.13334-red)](https://arxiv.org/pdf/2510.13334)
+[![Dataset](https://img.shields.io/badge/HuggingFace-Dataset-yellow)](https://huggingface.co/datasets/yuanfengustc/defensivekv_dataset)
+[![OpenReview](https://img.shields.io/badge/OpenReview-ICLR26-blue)](https://openreview.net/forum?id=nJgS06sX3O)
 
 This repository contains the official implementation of **DefensiveKV** and **LayerDefensiveKV**, two novel KV cache compression methods introduced in our paper. This project is forked from the excellent [KVPRESS](https://github.com/NVIDIA/kvpress) library by NVIDIA but provides a more efficient implementation of head-wise KV-cache methods.
 
