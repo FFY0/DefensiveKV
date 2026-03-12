@@ -111,6 +111,7 @@ python statistic.py
 Future updates are listed below—feel free to open an issue or send a PR with ideas and feature requests:
 
 - [X] Initialize release.
+- [X] Efficiency evaluation.
 - [ ] Upgrade Transformers to v4.52 for Qwen-3 support.
 - [ ] Qwen-3-MoE Support.
 

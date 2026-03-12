@@ -24,7 +24,9 @@ done
 
 
 dataset="ruler"
+# 4096, 16384, 32768
 data_dir=${KVPRESS_DATASETS}/ruler/4096/
+
 compression_ratios=(0.8)
 model_names=( "Meta-Llama-3.1-8B-Instruct" )
 press_names_group1=("efficient_layer_defensivekv" "efficient_defensivekv" "criti_adasnapkv"  "adasnapkv" "snapkv")
