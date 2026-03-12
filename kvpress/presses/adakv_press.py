@@ -35,6 +35,8 @@ class AdaKVPress(BasePress):
         self.press.compression_ratio = value
 
     def compress(self, module, hidden_states, keys, values, attentions, kwargs):
+        print("Warnings: you are using a mask-based simulation for head-wise cache eviction; while simple, this approach does not deliver real efficiency improvements. \n " \
+        "For actual performance gains, switch to the efficient version with optimized CUDA kernel (see EfficientAdaScorerPress).")
         if self.compression_ratio == 0:
             return keys, values
 

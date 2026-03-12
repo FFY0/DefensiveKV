@@ -15,7 +15,7 @@ from kvpress.presses.efficient_ada_scorer_press import EfficientAdaScorerPress
 from kvpress.presses.efficient_ada_global_scorer_press import EfficientAdaGlobalScorerPress
 from kvpress.presses.base_press import BasePress
 from kvpress.presses.scorer_press import ScorerPress
-
+from kvpress.ops.vw_norm import vw_l1norm
 
 @dataclass
 class EfficientLayerDefensiveKVPress(EfficientAdaGlobalScorerPress):
@@ -25,6 +25,44 @@ class EfficientLayerDefensiveKVPress(EfficientAdaGlobalScorerPress):
 
     def __str__(self):
         return f"EfficientLayerDefensiveKV={self.compression_ratio}_win={self.window_size}_kerl={self.kernel_size}"
+
+    
+    ## Following CriticalKV, we select tokens jointly using value norms and attention scores in a two-stage procedure. (Triton version)
+    def vwl1norm_triton(self, values, module, scores, window_bias, ave_attn_weights):
+        bsz, num_key_value_heads, q_len, _ = values.shape
+        num_key_value_groups = module.config.num_attention_heads // num_key_value_heads
+        Wo = module.o_proj.weight.transpose(0, 1)
+
+        Wo = Wo.view(module.config.num_attention_heads, module.config.head_dim, module.config.hidden_size)
+        V = repeat_kv(values, num_key_value_groups)
+        # Kernel fusion optimization
+        WoV_norm = vw_l1norm(V, Wo)
+        WoV_norm = WoV_norm.view(bsz, num_key_value_heads, module.num_key_value_groups, q_len).mean(dim=2)
+
+        projected_norm_normalization = WoV_norm / WoV_norm.sum(dim=-2, keepdim=True)
+        scores = scores * projected_norm_normalization
+
+        ## Specifically, we first select tokens until the cumulative attention mass reaches a 90% threshold (CriticalKV stage 1), and then jointly select additional tokens based on value norms (stage 2).
+        threshold = 0.9 - window_bias
+        normalized_scores = ave_attn_weights / ave_attn_weights.sum(dim=-1, keepdim=True)
+        batch_size, num_heads = normalized_scores.shape[:2]
+        score_mask = torch.zeros_like(normalized_scores, dtype=torch.bool)
+        # calculate cumsum
+        sorted_scores, sorted_indices = torch.sort(normalized_scores, dim=-1, descending=True)
+        cumsum = torch.cumsum(sorted_scores, dim=-1)
+        mask = cumsum >= threshold
+        count = torch.argmax(mask.to(torch.int32), dim=-1)
+        count.clamp_(max=int(q_len * (1 - self.compression_ratio) - self.window_size))
+        for b in range(batch_size):
+            for h in range(num_heads):
+                k = count[b, h].item()
+                indices = sorted_indices[b, h, :k]
+                score_mask[b, h, indices] = True
+        scores = torch.where(score_mask, scores.max().item(), scores)
+
+        return scores
+
+
 
     ## Following CriticalKV, we select tokens jointly using value norms and attention scores in a two-stage procedure.
     def vwl1norm(self, values, module, scores, window_bias, ave_attn_weights):
@@ -169,7 +207,7 @@ class EfficientLayerDefensiveKVPress(EfficientAdaGlobalScorerPress):
         ## Defensive Mechanism End
     
         ## Borrowed from CriticalKV
-        scores = self.vwl1norm(values[..., : -self.window_size, :], module, scores, window_bias, ave_attn_weights)
+        scores = self.vwl1norm_triton(values[..., : -self.window_size, :], module, scores, window_bias, ave_attn_weights)
 
         # Add back the observation window. Use max score to make sure the window is not pruned.
         scores = F.pad(scores, (0, self.window_size), value=scores.max().item())

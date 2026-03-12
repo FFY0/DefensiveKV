@@ -52,7 +52,11 @@ class EfficientAdaGlobalScorerPress(BasePress):
         layer_idx: int, 
         kwargs: dict,
     ) -> tuple[torch.Tensor, torch.Tensor]:
-        
+        """
+        Although the existing global scorer performs layer-wise kv cache compression after the all layers' prefilling, it does not alleviate peak memory constraints. 
+        Implementing the cascaded compression mechanism described in Cake is required to resolve this. Contributions implementing this feature are highly encouraged!
+        """
+        print("Warnings: Although the existing global scorer performs layer-wise kv cache compression after the all layers' prefilling, it does not alleviate peak memory constraints. \n Implementing the cascaded compression mechanism described in Cake is required to resolve this. Contributions implementing this feature are highly encouraged!")
         cache = kwargs.get("past_key_value", None)
         
         keys = cache.key_cache[layer_idx]
