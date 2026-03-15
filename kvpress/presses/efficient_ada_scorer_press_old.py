@@ -73,8 +73,7 @@ class EfficientAdaScorerPress(BasePress):
         if self.compression_ratio == 0:
             return keys, values
 
-        cache = kwargs.get("past_key_value", kwargs.get("past_key_values", None))
-        
+        cache = kwargs.get("past_key_value", None)
         assert cache is not None, "Cache is required for AdaScorerPress"
         cache_metadata = cache.metadata_list[module.layer_idx]
 
@@ -89,54 +88,36 @@ class EfficientAdaScorerPress(BasePress):
         n_kept = int(q_len * (1 - self.compression_ratio) * num_key_value_heads)
 
         # NOTE: current implementation only support bsz 1
-        # assert flatten_scores.shape[0] == 1
-        # flatten_scores = flatten_scores.view(-1)
-        bsz = flatten_scores.shape[0]
+        assert flatten_scores.shape[0] == 1
+        flatten_scores = flatten_scores.view(-1)
 
         cache_topk_idx = flatten_scores.topk(n_kept, dim=-1).indices
         head_len = cache_metadata.head_lens[0]
         cache_topk_head_idx = cache_topk_idx // head_len
 
-        compressed_head_lens = torch.zeros((bsz, num_key_value_heads), dtype=torch.int32, device=keys.device)
-        # compressed_head_lens.scatter_add_(
-        #     0, cache_topk_head_idx, torch.ones_like(cache_topk_head_idx, dtype=torch.int32)
-        # )
-        for i in range(bsz):
-            compressed_head_lens[i].scatter_add_(
-                0,  # 在维度0上累加
-                cache_topk_head_idx[i],  # 当前批次的头索引 [7508]
-                torch.ones_like(cache_topk_head_idx[i], dtype=torch.int32)  # 源值 [7508]
-            )
-
-        # compressed_cu_seqlens_k = torch.cumsum(compressed_head_lens, dim=0, dtype=torch.int32)
-        compressed_cu_seqlens_k = torch.cumsum(compressed_head_lens, dim=1, dtype=torch.int32)
-        
-        # compressed_cu_seqlens_k = torch.cat(
-        #     [torch.tensor([0]*bsz, dtype=torch.int32, device=keys.device).reshape(bsz, 1), compressed_cu_seqlens_k], dim=1
-        # )
-        offsets_cu = torch.arange(0, n_kept * bsz, n_kept, device=cache_topk_idx.device).view(-1, 1).expand(-1, num_key_value_heads)
-        compressed_cu_seqlens_k = (compressed_cu_seqlens_k + offsets_cu).reshape(-1)
-        compressed_cu_seqlens_k = torch.cat(
-                [torch.tensor([0], dtype=torch.int32, device=keys.device), compressed_cu_seqlens_k], dim=0
+        compressed_head_lens = torch.zeros(num_key_value_heads, dtype=torch.int32, device=keys.device)
+        compressed_head_lens.scatter_add_(
+            0, cache_topk_head_idx, torch.ones_like(cache_topk_head_idx, dtype=torch.int32)
         )
-        
+
+        compressed_cu_seqlens_k = torch.cumsum(compressed_head_lens, dim=0, dtype=torch.int32)
+
+        compressed_cu_seqlens_k = torch.cat(
+            [torch.tensor([0], dtype=torch.int32, device=keys.device), compressed_cu_seqlens_k]
+        )
+
         compressed_max_seqlen_k = compressed_head_lens.max().cpu().item()
-        
-        compressed_head_lens = compressed_head_lens.reshape(-1)
-        
-        
         cache_metadata._update_metadata_while_compressing(
             compressed_head_lens, compressed_cu_seqlens_k, compressed_max_seqlen_k
         )
 
         # sort the cache topk idx, index the retained cache among all heads
         sorted_4_cache_topk_idx = torch.argsort(cache_topk_head_idx, descending=False)
-        # cache_topk_idx = cache_topk_idx[sorted_4_cache_topk_idx]
-        cache_topk_idx = torch.stack([cache_topk_idx[i][sorted_4_cache_topk_idx[i]] for i in range(bsz)])
-        offsets = torch.arange(0, bsz * flatten_scores.shape[1], flatten_scores.shape[1], 
-                      device=cache_topk_idx.device).view(-1, 1).expand(-1, cache_topk_idx.shape[1])
-        cache_topk_idx = cache_topk_idx + offsets
-        cache_topk_idx = cache_topk_idx.reshape(-1).unsqueeze(-1).expand(-1, module.head_dim)
+        cache_topk_idx = cache_topk_idx[sorted_4_cache_topk_idx]
+        # torch.save(cache_topk_idx, f"/home/ffy/ghy_code/defensive_kvpress/caches_topk/{self.pre_idx}_{module.layer_idx}_idx_{self.compression_ratio}.pt")
+        # if module.layer_idx == 31:
+        #     self.pre_idx += 1
+        cache_topk_idx = cache_topk_idx.unsqueeze(-1).expand(-1, module.head_dim)
         keys = keys.gather(0, cache_topk_idx).contiguous()
         values = values.gather(0, cache_topk_idx).contiguous()
 

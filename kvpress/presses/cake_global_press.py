@@ -14,6 +14,7 @@ from transformers.models.llama.modeling_llama import repeat_kv, rotate_half
 from kvpress.presses.cake_scorer_press import CakeScorerPress
 from kvpress.presses.base_press import BasePress
 from kvpress.presses.scorer_press import ScorerPress
+from kvpress.utils import get_prerope_query_states
 
 
 @dataclass
@@ -47,16 +48,18 @@ class CakeGlobalPress(CakeScorerPress):
         head_dim = module.head_dim
         num_key_value_groups = num_heads // module.config.num_key_value_heads
 
-        # Get last window_size queries
-        if hasattr(module, "q_proj"):
-            query_states = module.q_proj(hidden_states[:, -window_size:])
-        elif hasattr(module, "qkv_proj"):
-            qkv = module.qkv_proj(hidden_states[:, -window_size:])
-            query_states = qkv[..., : num_heads * head_dim]
-        else:
-            raise NotImplementedError(f"SnapKV not yet implemented for {module.__class__}.")
+        # # Get last window_size queries
+        # if hasattr(module, "q_proj"):
+        #     query_states = module.q_proj(hidden_states[:, -window_size:])
+        # elif hasattr(module, "qkv_proj"):
+        #     qkv = module.qkv_proj(hidden_states[:, -window_size:])
+        #     query_states = qkv[..., : num_heads * head_dim]
+        # else:
+        #     raise NotImplementedError(f"SnapKV not yet implemented for {module.__class__}.")
 
-        query_states = query_states.view(bsz, window_size, num_heads, head_dim).transpose(1, 2)
+        # query_states = query_states.view(bsz, window_size, num_heads, head_dim).transpose(1, 2)
+
+        query_states = get_prerope_query_states(module, hidden_states[:, -self.window_size :])
 
         # Apply RoPE
         cos, sin = position_embeddings

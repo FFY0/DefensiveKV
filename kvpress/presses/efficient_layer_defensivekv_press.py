@@ -11,10 +11,12 @@ from torch import nn
 from torch.nn import functional as F
 from transformers.models.llama.modeling_llama import repeat_kv, rotate_half
 
-from kvpress.presses.efficient_ada_scorer_press import EfficientAdaScorerPress
+from kvpress.presses.efficient_ada_scorer_press_old import EfficientAdaScorerPress
 from kvpress.presses.efficient_ada_global_scorer_press import EfficientAdaGlobalScorerPress
 from kvpress.presses.base_press import BasePress
 from kvpress.presses.scorer_press import ScorerPress
+from transformers.models.qwen3_moe.modeling_qwen3_moe import Qwen3MoeAttention
+from transformers.models.qwen3.modeling_qwen3 import Qwen3Attention
 from kvpress.ops.vw_norm import vw_l1norm
 
 @dataclass
@@ -26,6 +28,51 @@ class EfficientLayerDefensiveKVPress(EfficientAdaGlobalScorerPress):
     def __str__(self):
         return f"EfficientLayerDefensiveKV={self.compression_ratio}_win={self.window_size}_kerl={self.kernel_size}"
 
+
+    ## Following CriticalKV, we select tokens jointly using value norms and attention scores in a two-stage procedure.
+    def vwl1norm(self, values, module, scores, window_bias, ave_attn_weights):
+        bsz, num_key_value_heads, q_len, _ = values.shape
+        num_key_value_groups = module.config.num_attention_heads // num_key_value_heads
+        Wo = module.o_proj.weight.transpose(0, 1)
+
+        # Wo = Wo.view(module.config.num_attention_heads, module.config.head_dim, module.config.hidden_size)
+        Wo = Wo.view(module.config.num_attention_heads, module.head_dim, module.config.hidden_size)
+        V = repeat_kv(values, num_key_value_groups)
+
+        # We use head-wise computation instead of direct matmul to reduce the memory usage of WoV.
+        # Future kernel fusion optimization could eliminate this intermediate variables to enhance performance.
+        head_WoV_norm_list = []
+        for head in range(V.size(1)):
+            head_WoV = V[:, head, :, ...].matmul(Wo[head, ...].unsqueeze(0))
+            head_WoV_norm = torch.norm(head_WoV, p=1, dim=-1)
+            head_WoV_norm_list.append(head_WoV_norm)
+
+        # b_size, num_heads, q_len , k_len
+        WoV_norm = torch.stack(head_WoV_norm_list, dim=1)
+        WoV_norm = WoV_norm.view(bsz, num_key_value_heads, module.num_key_value_groups, q_len).mean(dim=2)
+
+        projected_norm_normalization = WoV_norm / WoV_norm.sum(dim=-2, keepdim=True)
+        scores = scores * projected_norm_normalization
+
+        ## Specifically, we first select tokens until the cumulative attention mass reaches a 90% threshold (CriticalKV stage 1), and then jointly select additional tokens based on value norms (stage 2).
+        threshold = 0.9 - window_bias
+        normalized_scores = ave_attn_weights / ave_attn_weights.sum(dim=-1, keepdim=True)
+        batch_size, num_heads = normalized_scores.shape[:2]
+        score_mask = torch.zeros_like(normalized_scores, dtype=torch.bool)
+        # calculate cumsum
+        sorted_scores, sorted_indices = torch.sort(normalized_scores, dim=-1, descending=True)
+        cumsum = torch.cumsum(sorted_scores, dim=-1)
+        mask = cumsum >= threshold
+        count = torch.argmax(mask.to(torch.int32), dim=-1)
+        count.clamp_(max=int(q_len * (1 - self.compression_ratio) - self.window_size))
+        for b in range(batch_size):
+            for h in range(num_heads):
+                k = count[b, h].item()
+                indices = sorted_indices[b, h, :k]
+                score_mask[b, h, indices] = True
+        scores = torch.where(score_mask, scores.max().item(), scores)
+
+        return scores
     
     ## Following CriticalKV, we select tokens jointly using value norms and attention scores in a two-stage procedure. (Triton version)
     def vwl1norm_triton(self, values, module, scores, window_bias, ave_attn_weights):
@@ -33,7 +80,9 @@ class EfficientLayerDefensiveKVPress(EfficientAdaGlobalScorerPress):
         num_key_value_groups = module.config.num_attention_heads // num_key_value_heads
         Wo = module.o_proj.weight.transpose(0, 1)
 
-        Wo = Wo.view(module.config.num_attention_heads, module.config.head_dim, module.config.hidden_size)
+        # Wo = Wo.view(module.config.num_attention_heads, module.config.head_dim, module.config.hidden_size)
+        Wo = Wo.view(module.config.num_attention_heads, module.head_dim, module.config.hidden_size)
+
         V = repeat_kv(values, num_key_value_groups)
         # Kernel fusion optimization
         WoV_norm = vw_l1norm(V, Wo)
@@ -62,51 +111,6 @@ class EfficientLayerDefensiveKVPress(EfficientAdaGlobalScorerPress):
 
         return scores
 
-
-
-    ## Following CriticalKV, we select tokens jointly using value norms and attention scores in a two-stage procedure.
-    def vwl1norm(self, values, module, scores, window_bias, ave_attn_weights):
-        bsz, num_key_value_heads, q_len, _ = values.shape
-        num_key_value_groups = module.config.num_attention_heads // num_key_value_heads
-        Wo = module.o_proj.weight.transpose(0, 1)
-        Wo = Wo.view(module.config.num_attention_heads, module.config.head_dim, module.config.hidden_size)
-        V = repeat_kv(values, num_key_value_groups)
-
-        # We use head-wise computation instead of direct matmul to reduce the memory usage of WoV.
-        # Future kernel fusion optimization could eliminate this intermediate variables to enhance performance.
-        head_WoV_norm_list = []
-        for head in range(V.size(1)):
-            head_WoV = V[:, head, :, ...].matmul(Wo[head, ...].unsqueeze(0))
-            head_WoV_norm = torch.norm(head_WoV, p=1, dim=-1)
-            head_WoV_norm_list.append(head_WoV_norm)
-
-        # b_size, num_heads, q_len , k_len
-        WoV_norm = torch.stack(head_WoV_norm_list, dim=1)
-        WoV_norm = WoV_norm.view(bsz, num_key_value_heads, module.num_key_value_groups, q_len).mean(dim=2)
-
-        projected_norm_normalization = WoV_norm / WoV_norm.sum(dim=-2, keepdim=True)
-        scores = scores * projected_norm_normalization
-
-        ## Specifically, we first select tokens until the cumulative attention mass reaches a 90% threshold (CriticalKV stage 1), and then jointly select additional tokens based on value norms (stage 2).
-        threshold = 0.9 - window_bias
-        normalized_scores = ave_attn_weights / ave_attn_weights.sum(dim=-1, keepdim=True)
-        batch_size, num_heads = normalized_scores.shape[:2]
-        score_mask = torch.zeros_like(normalized_scores, dtype=torch.bool)
-        sorted_scores, sorted_indices = torch.sort(normalized_scores, dim=-1, descending=True)
-        cumsum = torch.cumsum(sorted_scores, dim=-1)
-        mask = cumsum >= threshold
-        count = torch.argmax(mask.to(torch.int32), dim=-1)
-        count.clamp_(max=int(q_len * (1 - self.compression_ratio) - self.window_size))
-        for b in range(batch_size):
-            for h in range(num_heads):
-                k = count[b, h].item()
-                indices = sorted_indices[b, h, :k]
-                score_mask[b, h, indices] = True
-        scores = torch.where(score_mask, scores.max().item(), scores)
-
-
-        return scores
-
     @staticmethod
     def compute_window_attention(module, hidden_states, keys, window_size, position_embeddings):
         """
@@ -129,6 +133,8 @@ class EfficientLayerDefensiveKVPress(EfficientAdaGlobalScorerPress):
 
         query_states = query_states.view(bsz, window_size, num_heads, head_dim).transpose(1, 2)
 
+        if isinstance(module, (Qwen3MoeAttention, Qwen3Attention)):
+            query_states = module.q_norm(query_states)
         # Apply RoPE
         cos, sin = position_embeddings
         cos, sin = cos[:, -window_size:], sin[:, -window_size:]
@@ -208,6 +214,7 @@ class EfficientLayerDefensiveKVPress(EfficientAdaGlobalScorerPress):
     
         ## Borrowed from CriticalKV
         scores = self.vwl1norm_triton(values[..., : -self.window_size, :], module, scores, window_bias, ave_attn_weights)
+        # scores = self.vwl1norm(values[..., : -self.window_size, :], module, scores, window_bias, ave_attn_weights)
 
         # Add back the observation window. Use max score to make sure the window is not pruned.
         scores = F.pad(scores, (0, self.window_size), value=scores.max().item())

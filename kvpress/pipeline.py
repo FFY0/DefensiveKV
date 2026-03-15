@@ -5,11 +5,13 @@
 import contextlib
 import logging
 from typing import Optional
+import time
 
 import torch
-from transformers import AutoModelForCausalLM, Cache, DynamicCache, Pipeline
+from transformers import AutoModelForCausalLM, Cache, DynamicCache, Pipeline, QuantizedCache
 from transformers.pipelines import PIPELINE_REGISTRY
 from transformers.pipelines.base import GenericTensor
+# from transformers import QuantizedCacheConfig, QuantoQuantizedCache
 
 from kvpress.presses.base_press import BasePress
 from kvpress.presses.efficient_ada_scorer_press import EfficientAdaScorerPress
@@ -39,6 +41,7 @@ class KVPressTextGenerationPipeline(Pipeline):
         max_new_tokens: int = 50,
         max_context_length: Optional[int] = None,
         cache: Optional[Cache] = None,
+        enable_thinking: bool = False,
         **kwargs,
     ):
         """
@@ -82,6 +85,7 @@ class KVPressTextGenerationPipeline(Pipeline):
             "questions": questions,
             "answer_prefix": answer_prefix,
             "max_context_length": max_context_length,
+            "enable_thinking": enable_thinking,
         }
         forward_kwargs = {"press": press, "max_new_tokens": max_new_tokens, "cache": cache}
         return preprocess_kwargs, forward_kwargs, postprocess_kwargs
@@ -92,6 +96,7 @@ class KVPressTextGenerationPipeline(Pipeline):
         questions: list[str],
         answer_prefix: str,
         max_context_length: int,
+        enable_thinking: bool = False,
     ):
         """
         Apply the chat template to the triplet (context, questions, answer_prefix) and tokenize it.
@@ -113,7 +118,7 @@ class KVPressTextGenerationPipeline(Pipeline):
         else:
             separator = "\n" + "#" * len(context)
             context = self.tokenizer.apply_chat_template(
-                [{"role": "user", "content": context + separator}], add_generation_prompt=True, tokenize=False
+                [{"role": "user", "content": context + separator}], add_generation_prompt=True, tokenize=False, enable_thinking=enable_thinking,
             )
             context, question_suffix = context.split(separator)
 
@@ -121,7 +126,7 @@ class KVPressTextGenerationPipeline(Pipeline):
         # e.g. for llama3.1, question_suffix="<|eot_id|><|start_header_id|>assistant<|end_header_id|>\n\n")
         questions = [question + question_suffix + answer_prefix for question in questions]
 
-        # Tokenize the context and questions
+        # Tokenize the context and questions   
         context_ids = self.tokenizer.encode(context, return_tensors="pt", add_special_tokens=False)
         question_ids = [
             self.tokenizer.encode(question, return_tensors="pt", add_special_tokens=False) for question in questions
@@ -165,8 +170,9 @@ class KVPressTextGenerationPipeline(Pipeline):
 
         context_ids = input_tensors["context_ids"].to(self.model.device)
         context_length = context_ids.shape[1]
-
+        # context_ids = context_ids.repeat(4, 1)
         # Prefilling using the press on the context
+
         if cache is None:
             # check if the press is an case of AdaKV
             if isinstance(press, EfficientAdaScorerPress):
@@ -175,7 +181,6 @@ class KVPressTextGenerationPipeline(Pipeline):
                 cache = DynamicCacheSplitHeadFlatten()
             else:
                 cache = DynamicCache()
-        
         with press(self.model) if press is not None else contextlib.nullcontext():
             self.model(
                 input_ids=context_ids,
@@ -247,6 +252,7 @@ class KVPressTextGenerationPipeline(Pipeline):
             context_length, context_length + question_ids.shape[1], device=self.model.device
         ).unsqueeze(0)
 
+
         # if the user doesn't provide a question, skip forward pass
         outputs = self.model(
             input_ids=question_ids.to(self.model.device),
@@ -279,25 +285,42 @@ class KVPressTextGenerationPipeline(Pipeline):
             n = cache.metadata_list[0].head_lens[0].cpu().item() - cache_seq_lengths
             cache.remove_tokens(n)
         else:
-            cache.key_cache = [
-                cache.key_cache[layer_idx][:, :, :sequence_length]
-                for layer_idx, sequence_length in enumerate(cache_seq_lengths)
-            ]
-            cache.value_cache = [
-                cache.value_cache[layer_idx][:, :, :sequence_length]
-                for layer_idx, sequence_length in enumerate(cache_seq_lengths)
-            ]
-            if hasattr(cache, "_quantized_key_cache"):
-                cache._quantized_key_cache = [
-                    cache._quantized_key_cache[layer_idx][:, :, :sequence_length]
-                    for layer_idx, sequence_length in enumerate(cache_seq_lengths)
-                ]
-                cache._quantized_value_cache = [
-                    cache._quantized_value_cache[layer_idx][:, :, :sequence_length]
-                    for layer_idx, sequence_length in enumerate(cache_seq_lengths)
-                ]
+            self._remove_answer_from_cache(cache, cache_seq_lengths)
+
+            # cache.key_cache = [
+            #     cache.key_cache[layer_idx][:, :, :sequence_length]
+            #     for layer_idx, sequence_length in enumerate(cache_seq_lengths)
+            # ]
+            # cache.value_cache = [
+            #     cache.value_cache[layer_idx][:, :, :sequence_length]
+            #     for layer_idx, sequence_length in enumerate(cache_seq_lengths)
+            # ]
+            # if hasattr(cache, "_quantized_key_cache"):
+            #     cache._quantized_key_cache = [
+            #         cache._quantized_key_cache[layer_idx][:, :, :sequence_length]
+            #         for layer_idx, sequence_length in enumerate(cache_seq_lengths)
+            #     ]
+            #     cache._quantized_value_cache = [
+            #         cache._quantized_value_cache[layer_idx][:, :, :sequence_length]
+            #         for layer_idx, sequence_length in enumerate(cache_seq_lengths)
+            #     ]
 
         return answer
+    
+    def _remove_answer_from_cache(self, cache: Cache, cache_seq_lengths: list[int]):
+
+        for layer_idx, sequence_length in enumerate(cache_seq_lengths):
+            cache.layers[layer_idx].keys = cache.layers[layer_idx].keys[:, :, :sequence_length]
+            cache.layers[layer_idx].values = cache.layers[layer_idx].values[:, :, :sequence_length]
+
+        if isinstance(cache, QuantizedCache):
+            for layer_idx, sequence_length in enumerate(cache_seq_lengths):
+                cache.layers[layer_idx]._quantized_keys = cache.layers[layer_idx]._quantized_keys[
+                    :, :, :sequence_length
+                ]
+                cache.layers[layer_idx]._quantized_values = cache.layers[layer_idx]._quantized_values[
+                    :, :, :sequence_length
+                ]
     
         
 

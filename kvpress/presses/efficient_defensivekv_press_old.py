@@ -10,13 +10,10 @@ from torch import nn
 from torch.nn import functional as F
 from transformers.models.llama.modeling_llama import repeat_kv, rotate_half
 
-from kvpress.presses.efficient_ada_scorer_press import EfficientAdaScorerPress
+from kvpress.presses.efficient_ada_scorer_press_old import EfficientAdaScorerPress
 from kvpress.presses.efficient_ada_global_scorer_press import EfficientAdaGlobalScorerPress
 from kvpress.presses.base_press import BasePress
 from kvpress.presses.scorer_press import ScorerPress
-from transformers.models.qwen3_moe.modeling_qwen3_moe import Qwen3MoeAttention
-from transformers.models.qwen3.modeling_qwen3 import Qwen3Attention
-
 from kvpress.ops.vw_norm import vw_l1norm
 
 @dataclass
@@ -34,9 +31,7 @@ class EfficientDefensiveKVPress(EfficientAdaScorerPress):
         num_key_value_groups = module.config.num_attention_heads // num_key_value_heads
         Wo = module.o_proj.weight.transpose(0, 1)
 
-        # Wo = Wo.view(module.config.num_attention_heads, module.config.head_dim, module.config.hidden_size)
-        Wo = Wo.view(module.config.num_attention_heads, module.head_dim, module.config.hidden_size)
-
+        Wo = Wo.view(module.config.num_attention_heads, module.config.head_dim, module.config.hidden_size)
         V = repeat_kv(values, num_key_value_groups)
 
         # We use head-wise computation instead of direct matmul to reduce the memory usage of WoV.
@@ -80,9 +75,7 @@ class EfficientDefensiveKVPress(EfficientAdaScorerPress):
         num_key_value_groups = module.config.num_attention_heads // num_key_value_heads
         Wo = module.o_proj.weight.transpose(0, 1)
 
-        # Wo = Wo.view(module.config.num_attention_heads, module.config.head_dim, module.config.hidden_size)
-        Wo = Wo.view(module.config.num_attention_heads, module.head_dim, module.config.hidden_size)
-
+        Wo = Wo.view(module.config.num_attention_heads, module.config.head_dim, module.config.hidden_size)
         V = repeat_kv(values, num_key_value_groups)
         # Kernel fusion optimization
         WoV_norm = vw_l1norm(V, Wo)
@@ -110,7 +103,7 @@ class EfficientDefensiveKVPress(EfficientAdaScorerPress):
         scores = torch.where(score_mask, scores.max().item(), scores)
 
         return scores
-    
+
 
 
     @staticmethod
@@ -135,8 +128,6 @@ class EfficientDefensiveKVPress(EfficientAdaScorerPress):
 
         query_states = query_states.view(bsz, window_size, num_heads, head_dim).transpose(1, 2)
 
-        if isinstance(module, (Qwen3MoeAttention, Qwen3Attention)):
-            query_states = module.q_norm(query_states)
         # Apply RoPE
         cos, sin = position_embeddings
         cos, sin = cos[:, -window_size:], sin[:, -window_size:]
@@ -216,8 +207,7 @@ class EfficientDefensiveKVPress(EfficientAdaScorerPress):
 
         ## Borrowed from CriticalKV
         scores = self.vwl1norm_triton(values[..., : -self.window_size, :], module, scores, window_bias, ave_attn_weights)
-        # scores = self.vwl1norm(values[..., : -self.window_size, :], module, scores, window_bias, ave_attn_weights)
-
+       
         # Add back the observation window. Use max score to make sure the window is not pruned.
         scores = F.pad(scores, (0, self.window_size), value=scores.max().item())
 

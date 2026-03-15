@@ -206,7 +206,7 @@ def vw_l1norm(value_states, o_proj_w, scale=1.0):
 
     bs, head_num, seq_len, head_dim = value_states.shape
     assert value_states.size(-1) == o_proj_w.size(-2)
-    assert head_num * head_dim == o_proj_w.size(-1)
+    # assert head_num * head_dim == o_proj_w.size(-1)
     assert head_dim in {16, 32, 64, 128, 256}
 
     o = torch.zeros((bs, head_num, seq_len), device=value_states.device, dtype=value_states.dtype)
@@ -220,7 +220,8 @@ def vw_l1norm(value_states, o_proj_w, scale=1.0):
         o.stride(0), o.stride(1), o.stride(2),
         bs, head_num, seq_len,
         HEADDIM=head_dim,
-        DIM=head_dim * head_num,
+        # DIM=head_dim * head_num,
+        DIM=o_proj_w.size(-1),
         BLOCK_M=BLOCK_M,
         BLOCK_N=BLOCK_N,
         num_warps=num_warps,

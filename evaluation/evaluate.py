@@ -157,7 +157,7 @@ def evaluate(
     save_filename = save_dir / (
         "__".join(
             [
-                dataset,
+                dataset.replace("/", "--").split("--")[-1],
                 model.replace("/", "--").split("--")[-1],
                 str(press),
                 str(compression_ratio),
@@ -230,6 +230,7 @@ def evaluate(
 
     if dataset == "longbench": 
         # evalutated_tasks = ["qasper"]
+        # evalutated_tasks = ["hotpotqa"]
         evalutated_tasks = None # Test all
     elif dataset == "ruler":
         # evalutated_tasks = ["niah_multivalue"]

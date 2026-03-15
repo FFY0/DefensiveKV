@@ -11,6 +11,10 @@ from torch.nn import functional as F
 from transformers.models.llama.modeling_llama import repeat_kv, rotate_half
 
 from kvpress.presses.scorer_press import ScorerPress
+from transformers.models.qwen3_moe.modeling_qwen3_moe import Qwen3MoeAttention
+from transformers.models.qwen3.modeling_qwen3 import Qwen3Attention
+
+from kvpress.utils import get_prerope_query_states
 
 
 @dataclass
@@ -36,17 +40,23 @@ class SnapKVPress(ScorerPress):
         head_dim = module.head_dim
         num_key_value_groups = num_heads // module.config.num_key_value_heads
 
+        # # Get last window_size queries
+        # if hasattr(module, "q_proj"):
+        #     query_states = module.q_proj(hidden_states[:, -window_size:])
+        # elif hasattr(module, "qkv_proj"):
+        #     qkv = module.qkv_proj(hidden_states[:, -window_size:])
+        #     query_states = qkv[..., : num_heads * head_dim]
+        # else:
+        #     raise NotImplementedError(f"SnapKV not yet implemented for {module.__class__}.")
+
+        # query_states = query_states.view(bsz, window_size, num_heads, head_dim).transpose(1, 2)
+
+        # if isinstance(module, (Qwen3MoeAttention, Qwen3Attention)):
+        #     query_states = module.q_norm(query_states)
+
         # Get last window_size queries
-        if hasattr(module, "q_proj"):
-            query_states = module.q_proj(hidden_states[:, -window_size:])
-        elif hasattr(module, "qkv_proj"):
-            qkv = module.qkv_proj(hidden_states[:, -window_size:])
-            query_states = qkv[..., : num_heads * head_dim]
-        else:
-            raise NotImplementedError(f"SnapKV not yet implemented for {module.__class__}.")
-
-        query_states = query_states.view(bsz, window_size, num_heads, head_dim).transpose(1, 2)
-
+        query_states = get_prerope_query_states(module, hidden_states[:, -window_size:])
+        
         # Apply RoPE
         cos, sin = position_embeddings
         cos, sin = cos[:, -window_size:], sin[:, -window_size:]

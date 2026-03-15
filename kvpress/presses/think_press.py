@@ -9,6 +9,7 @@ from torch import nn
 from transformers.models.llama.modeling_llama import rotate_half
 
 from kvpress.presses.base_press import BasePress
+from kvpress.utils import get_prerope_query_states
 
 
 @dataclass
@@ -32,20 +33,22 @@ class ThinKPress(BasePress):
         """
         Re-compute the last window_size query states
         """
-        bsz, q_len, _ = hidden_states.shape
-        num_heads = module.config.num_attention_heads
-        head_dim = module.head_dim
+        # bsz, q_len, _ = hidden_states.shape
+        # num_heads = module.config.num_attention_heads
+        # head_dim = module.head_dim
 
-        # Get last window_size queries
-        if hasattr(module, "q_proj"):
-            query_states = module.q_proj(hidden_states[:, -self.window_size :])
-        elif hasattr(module, "qkv_proj"):
-            qkv = module.qkv_proj(hidden_states[:, -self.window_size :])
-            query_states = qkv[..., : num_heads * head_dim]
-        else:
-            raise NotImplementedError(f"SnapKV not yet implemented for {module.__class__}.")
+        # # Get last window_size queries
+        # if hasattr(module, "q_proj"):
+        #     query_states = module.q_proj(hidden_states[:, -self.window_size :])
+        # elif hasattr(module, "qkv_proj"):
+        #     qkv = module.qkv_proj(hidden_states[:, -self.window_size :])
+        #     query_states = qkv[..., : num_heads * head_dim]
+        # else:
+        #     raise NotImplementedError(f"SnapKV not yet implemented for {module.__class__}.")
 
-        query_states = query_states.view(bsz, self.window_size, num_heads, head_dim).transpose(1, 2)
+        # query_states = query_states.view(bsz, self.window_size, num_heads, head_dim).transpose(1, 2)
+        
+        query_states = get_prerope_query_states(module, hidden_states[:, -self.window_size :])
 
         # Apply RoPE
         cos, sin = position_embeddings

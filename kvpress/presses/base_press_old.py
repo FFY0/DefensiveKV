@@ -18,8 +18,6 @@ from transformers import (
     Qwen2ForCausalLM,
 )
 
-from kvpress.ada_cache import DynamicCacheSplitHeadFlatten
-
 logger = logging.getLogger(__name__)
 
 
@@ -90,7 +88,7 @@ class BasePress:
         """
 
         hidden_states = kwargs["hidden_states"]
-        cache = kwargs["past_key_values"]
+        cache = kwargs["past_key_value"]
         q_len = hidden_states.shape[1]
 
         # Don't compress after pre-filling
@@ -102,12 +100,8 @@ class BasePress:
             keys = cache._dequantize(cache._quantized_key_cache[module.layer_idx])
             values = cache._dequantize(cache._quantized_value_cache[module.layer_idx])
         else:
-            if isinstance(cache, DynamicCacheSplitHeadFlatten):
-                keys = cache.key_cache[module.layer_idx]
-                values = cache.value_cache[module.layer_idx]
-            else:
-                keys = cache.layers[module.layer_idx].keys
-                values = cache.layers[module.layer_idx].values
+            keys = cache.key_cache[module.layer_idx]
+            values = cache.value_cache[module.layer_idx]
 
         keys, values = self.compress(module, hidden_states, keys, values, output[1], kwargs)
 
@@ -118,13 +112,8 @@ class BasePress:
             cache.value_cache[module.layer_idx] = torch.zeros(0, dtype=keys.dtype, device=keys.device)
             cache._seen_tokens = keys.shape[2]
         else:
-            if isinstance(cache, DynamicCacheSplitHeadFlatten):
-                cache.key_cache[module.layer_idx] = keys
-                cache.value_cache[module.layer_idx] = values
-            else:
-                cache_layer = cache.layers[module.layer_idx]
-                cache_layer.keys = keys
-                cache_layer.values = values
+            cache.key_cache[module.layer_idx] = keys
+            cache.value_cache[module.layer_idx] = values
 
         return output
 

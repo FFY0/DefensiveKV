@@ -5,8 +5,10 @@
 dataset="ruler"
 data_dir=${KVPRESS_DATASETS}/ruler/4096/
 compression_ratios=(0.8)
-model_names=( "Meta-Llama-3.1-8B-Instruct" )
-press_names_group1=("efficient_layer_defensivekv" "efficient_defensivekv" "criti_adasnapkv"  "adasnapkv" "snapkv")
+# model_names=( "Meta-Llama-3.1-8B-Instruct" )
+model_names=( "Qwen3-30B-A3B-Instruct" )
+# press_names_group1=("efficient_layer_defensivekv" "efficient_defensivekv" "criti_adasnapkv"  "adasnapkv" "snapkv")
+press_names_group1=("efficient_defensivekv")
 fraction=0.1
 LOG_DIR="logs"
 

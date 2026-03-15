@@ -61,6 +61,7 @@ class MetaData:
         )
 
         cu_offset = torch.arange(0, bsz * num_key_value_heads + 1, dtype=torch.int32, device=_device)
+        # cu_offset = torch.arange(0, num_key_value_heads + 1, dtype=torch.int32, device=_device)
 
         # init metadata
         self.decoding_cu_seqlens_q = decoding_cu_seqlens_q
@@ -77,14 +78,17 @@ class DynamicCacheSplitHeadFlatten(Cache):
     Flattened KV Cache Layout with a costomized update kernel
     """
 
-    def __init__(self) -> None:
-        super().__init__()
+    def __init__(self, num_layers: int = None) -> None:
+        # super().__init__(num_layers)
         self.key_cache: List[List[torch.Tensor]] = []
         self.value_cache: List[List[torch.Tensor]] = []
         self._seen_tokens = 0
         self.metadata_list: List[MetaData] = []
         self.layer_scores: List[List[torch.Tensor]] = []
         self.layer_scores_origin: List[List[torch.Tensor]] = []
+        self.clamp_scores: List[List[torch.Tensor]] = []
+        self.scores: List[List[torch.Tensor]] = []
+        self.projected_norms: List[List[torch.Tensor]] = []
         self.keys_idx: List[torch.Tensor] = []
         self.values_idx: List[torch.Tensor] = []
 
@@ -100,6 +104,32 @@ class DynamicCacheSplitHeadFlatten(Cache):
             return (tuple(self.key_cache[layer_idx]), tuple(self.value_cache[layer_idx]))
         else:
             raise KeyError(f"Cache only has {len(self)} layers, attempted to access layer with index {layer_idx}")
+        
+
+    def get_mask_sizes_cache(self, cache_position: torch.Tensor, layer_idx: int) -> tuple[int, int]:
+        """Return the length and offset of the cache, used to generate the mask"""
+        kv_offset = 0
+        query_length = cache_position.shape[0]
+        kv_length = self.get_seq_length(layer_idx) + query_length
+        return kv_length, kv_offset
+
+    def get_seq_length(self, idx) -> int:
+        """Returns the sequence length of the cached states."""
+        if self.key_cache[idx].numel() == 0:
+            return 0
+        return self.key_cache[idx].shape[-2]
+
+    def get_mask_sizes(self, cache_position: torch.Tensor, layer_idx: int) -> tuple[int, int]:
+        """
+        Return a tuple (kv_length, kv_offset) corresponding to the length and offset that will be returned for
+        the given layer at `layer_idx`.
+        The masks are then prepared according to the given lengths (kv_length, kv_offset) and patterns for each layer.
+        """
+        # For DynamicCache, where the layers are created at runtime -> if it was not yet created, the size is
+        # simply the shape of `cache_position`
+        if layer_idx >= len(self.key_cache):
+            return cache_position.shape[0], 0
+        return self.get_mask_sizes_cache(cache_position, layer_idx)
 
     def update(self, key_states, value_states, layer_idx, cache_kwargs=None):
         # each layer is a flatten layout like: [bsz * (head_0_len + head_1_len + ...+ head_n_len) , dim]
@@ -120,7 +150,7 @@ class DynamicCacheSplitHeadFlatten(Cache):
             bs, head, seqlen, head_dim = key_states.shape
 
             # TODO: Currently only support bs == 1
-            assert bs == 1, f"bs: {bs}"
+            # assert bs == 1, f"bs: {bs}"
             # NOTE: phase 2. we got [bs, head, seqlen, dim] as k, v input
             head_lens = self.metadata_list[layer_idx].head_lens
             cu_seqlens_k = self.metadata_list[layer_idx].cu_seqlens_k
@@ -132,13 +162,13 @@ class DynamicCacheSplitHeadFlatten(Cache):
                 self.key_cache[layer_idx].view(-1, head_dim).contiguous(),
                 key_states.contiguous(),
                 head_lens,
-                cu_seqlens_k,
+                cu_seqlens_k.to(torch.int32),
             )
             new_value_cache = update_flatten_klenN_view(
                 self.value_cache[layer_idx].view(-1, head_dim).contiguous(),
                 value_states.contiguous(),
                 head_lens,
-                cu_seqlens_k,
+                cu_seqlens_k.to(torch.int32),
             )
 
             self.key_cache[layer_idx] = new_key_cache
