@@ -133,8 +133,8 @@ Future updates are listed below—feel free to open an issue or send a PR with i
 
 - [X] Initialize release.
 - [X] Efficiency evaluation.
-- [ ] Upgrade Transformers to v4.52 for Qwen-3 support.
-- [ ] Qwen-3-MoE Support.
+- [X] Upgrade Transformers to v4.57 for Qwen-3 support.
+- [X] Qwen-3-MoE Support.
 
 ## Contact
 
