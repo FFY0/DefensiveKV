@@ -59,7 +59,9 @@ class CakeGlobalPress(CakeScorerPress):
 
         # query_states = query_states.view(bsz, window_size, num_heads, head_dim).transpose(1, 2)
 
-        query_states = get_prerope_query_states(module, hidden_states[:, -self.window_size :])
+        # query_states = get_prerope_query_states(module, hidden_states[:, -self.window_size :])
+        query_states = get_prerope_query_states(module, hidden_states[:, -window_size:])
+
 
         # Apply RoPE
         cos, sin = position_embeddings

@@ -100,15 +100,16 @@ class CakeScorerPress(BasePress):
         kwargs: dict,
     ) -> tuple[torch.Tensor, torch.Tensor]:
         
-        cache = kwargs.get("past_key_value", None)
+        # cache = kwargs.get("past_key_value", None)
+        cache = kwargs.get("past_key_value", kwargs.get("past_key_values", None))
         
-        keys = cache.key_cache[layer_idx]
-        values = cache.value_cache[layer_idx]
+        keys = cache.layers[layer_idx].keys
+        values = cache.layers[layer_idx].values
         
         if self.compression_ratio == 0:
             return keys, values
         
-        bsz, num_key_value_heads, seq_len, head_dim = cache.key_cache[layer_idx].shape
+        bsz, num_key_value_heads, seq_len, head_dim = cache.layers[layer_idx].keys.shape
         
         hh_score = self.hh_scores[layer_idx]
 
@@ -119,16 +120,16 @@ class CakeScorerPress(BasePress):
 
         indices = indices.unsqueeze(-1).expand(-1, -1, -1, head_dim)
 
-        k_past_compress = cache.key_cache[layer_idx][:, :, :-self.window_size, :].gather(dim=2, index=indices)
-        v_past_compress = cache.value_cache[layer_idx][:, :, :-self.window_size, :].gather(dim=2, index=indices)
-        k_cur = cache.key_cache[layer_idx][:, :, -self.window_size:, :]
-        v_cur = cache.value_cache[layer_idx][:, :, -self.window_size:, :]
+        k_past_compress = cache.layers[layer_idx].keys[:, :, :-self.window_size, :].gather(dim=2, index=indices)
+        v_past_compress = cache.layers[layer_idx].values[:, :, :-self.window_size, :].gather(dim=2, index=indices)
+        k_cur = cache.layers[layer_idx].keys[:, :, -self.window_size:, :]
+        v_cur = cache.layers[layer_idx].values[:, :, -self.window_size:, :]
         key_states = torch.cat([k_past_compress, k_cur], dim=2)
         value_states = torch.cat([v_past_compress, v_cur], dim=2)
         
         # update origin cache
-        cache.key_cache[layer_idx] = key_states
-        cache.value_cache[layer_idx] = value_states
+        cache.layers[layer_idx].keys = key_states
+        cache.layers[layer_idx].values = value_states
 
         return key_states, value_states
         
@@ -163,7 +164,8 @@ class CakeScorerPress(BasePress):
         if self.compression_ratio == 0:
             return keys, values
 
-        cache = kwargs.get("past_key_value", None)
+        # cache = kwargs.get("past_key_value", None)
+        cache = kwargs.get("past_key_value", kwargs.get("past_key_values", None))
 
         with torch.no_grad():
             # kwargs["metadata"] = cache_metadata
@@ -195,7 +197,7 @@ class CakeScorerPress(BasePress):
         
         self.hh_scores = []
         self.pref_scores= []
-        keys = cache.key_cache[module.layer_idx]
-        values = cache.value_cache[module.layer_idx]
+        keys = cache.layers[module.layer_idx].keys
+        values = cache.layers[module.layer_idx].values
         
         return keys, values

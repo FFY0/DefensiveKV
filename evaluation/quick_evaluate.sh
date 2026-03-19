@@ -8,7 +8,7 @@ compression_ratios=(0.8)
 # model_names=( "Meta-Llama-3.1-8B-Instruct" )
 model_names=( "Qwen3-30B-A3B-Instruct" )
 # press_names_group1=("efficient_layer_defensivekv" "efficient_defensivekv" "criti_adasnapkv"  "adasnapkv" "snapkv")
-press_names_group1=("efficient_defensivekv")
+press_names_group1=("cake_global")
 fraction=0.1
 LOG_DIR="logs"
 

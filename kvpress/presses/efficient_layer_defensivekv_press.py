@@ -11,7 +11,7 @@ from torch import nn
 from torch.nn import functional as F
 from transformers.models.llama.modeling_llama import repeat_kv, rotate_half
 
-from kvpress.presses.efficient_ada_scorer_press_old import EfficientAdaScorerPress
+from kvpress.presses.efficient_ada_scorer_press import EfficientAdaScorerPress
 from kvpress.presses.efficient_ada_global_scorer_press import EfficientAdaGlobalScorerPress
 from kvpress.presses.base_press import BasePress
 from kvpress.presses.scorer_press import ScorerPress
