@@ -6,6 +6,8 @@
 
 This repository contains the official implementation of **DefensiveKV** and **LayerDefensiveKV**, two novel KV cache compression methods introduced in our paper. This project is forked from the excellent [KVPRESS](https://github.com/NVIDIA/kvpress) library by NVIDIA but provides a more efficient implementation of head-wise KV-cache methods.
 
+_If your issue has not received a response within 48 hours, please feel free to contact me via email—we will try to help. If you find this work useful for your research, we would greatly appreciate a star or a citation._ ^_^
+
 ## Overview
 
 We tackle the fragility of existing cache eviction via **defensive aggregation**, implementing two variants:
@@ -51,6 +53,7 @@ Set the following environment variables before running evaluations:
 
 
 # Preprocessed LongBench and 4K Ruler datasets are already provided in the datasets folder and can be downloaded directly.
+# Make sure git-xet is installed (https://hf.co/docs/hub/git-xet)
 git clone https://huggingface.co/datasets/yuanfengustc/defensivekv_dataset
 
 export KVPRESS_DATASETS=/path/to/datasets  # Directory containing evaluation datasets 
