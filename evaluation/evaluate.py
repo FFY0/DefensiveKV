@@ -196,7 +196,7 @@ def evaluate(
 
     if compress_questions:
         df["context"] = df["context"] + df["question"]
-        df["question"] = ""
+        df["question"] = "\n"
         save_filename = save_filename.with_name(save_filename.stem + "__compressed_questions" + save_filename.suffix)
 
     # Initialize pipeline with the correct attention implementation
